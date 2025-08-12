@@ -15,6 +15,10 @@ import { log, formatError } from "./utils.js";
 import { handleListResources, handleReadResource } from "./resources.js";
 import { ALL_TOOLS } from "./tools/index.js";
 
+import express from "express";
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
+
 /**
  * Create and configure MCP server
  */
@@ -22,7 +26,7 @@ export function createServer() {
   log("Creating Search1API MCP server");
 
   // Create server instance
-  const server = new Server({
+  const server = new McpServer({
     name: "search1api-server",
     version: "1.0.0"
   }, {
@@ -33,31 +37,100 @@ export function createServer() {
   });
 
   // Set up request handlers
-  setupRequestHandlers(server);
+  // setupRequestHandlers(server);
 
-  // Create STDIO transport
-  const transport = new StdioServerTransport();
+  // Set up Express HTTP server
+  const app = express();
+  app.use(express.json()); // Important: parse JSON bodies!
 
+  // Variable to hold the current transport (only one client at a time)
+  let transport: SSEServerTransport | undefined = undefined;
+
+  // SSE endpoint: client connects here to receive events
+  app.get("/sse", async (req, res) => {
+    try {
+      transport = new SSEServerTransport("/messages", res);
+      await server.connect(transport);
+      log("SSE transport connected");
+      // Optionally clean up when client disconnects:
+      res.on("close", () => {
+        transport = undefined;
+        log("SSE client disconnected");
+      });
+    } catch (error) {
+      log("Failed to establish SSE transport:", error);
+      res.status(500).end();
+    }
+  });
+
+  // Message endpoint: client POSTs messages here
+  app.post("/messages", async (req, res) => {
+    if (transport) {
+      await transport.handlePostMessage(req, res, req.body);
+    } else {
+      res.status(400).json({ error: "No active transport. Connect /sse first." });
+    }
+  });
+
+  // Start/stop control, just like you expect
+  let httpServer: ReturnType<typeof app.listen> | undefined;
   return {
     start: async () => {
-      try {
-        await server.connect(transport);
-        log("Server started successfully");
-      } catch (error) {
-        log("Failed to start server:", error);
-        throw error;
-      }
+      httpServer = app.listen(3001, () => {
+        log("Server started successfully and is listening on http://localhost:3001");
+      });
     },
     stop: async () => {
-      try {
-        await server.close();
-        log("Server stopped");
-      } catch (error) {
-        log("Error stopping server:", error);
+      if (httpServer) {
+        httpServer.close(() => {
+          log("Server stopped");
+        });
       }
     }
   };
 }
+
+
+// export function createServer() {
+//   log("Creating Search1API MCP server");
+
+//   // Create server instance
+//   const server = new Server({
+//     name: "search1api-server",
+//     version: "1.0.0"
+//   }, {
+//     capabilities: {
+//       resources: {},
+//       tools: {}
+//     }
+//   });
+
+//   // Set up request handlers
+//   setupRequestHandlers(server);
+
+//   // Create STDIO transport
+//   const transport = new StdioServerTransport();
+
+//   return {
+//     start: async () => {
+//       try {
+//         await server.connect(transport);
+//         log("Server started successfully");
+//       } catch (error) {
+//         log("Failed to start server:", error);
+//         throw error;
+//       }
+//     },
+//     stop: async () => {
+//       try {
+//         await server.close();
+//         log("Server stopped");
+//       } catch (error) {
+//         log("Error stopping server:", error);
+//       }
+//     }
+//   };
+// }
 
 /**
  * Helper function to handle errors uniformly

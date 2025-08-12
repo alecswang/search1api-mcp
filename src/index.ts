@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import { log } from "./utils.js";
 import { createServer } from "./server.js";
 import { API_KEY } from "./config.js";
 
@@ -9,22 +8,22 @@ import { API_KEY } from "./config.js";
 async function main() {
   // Ensure API key exists
   if (!API_KEY) {
-    log("SEARCH1API_KEY environment variable is not set");
+    console.error("SEARCH1API_KEY environment variable is not set");
     process.exit(1);
   }
 
   try {
-    log("Starting Search1API MCP server");
+    console.error("Starting Search1API MCP server");
     const server = createServer();
     
     // Start server
     await server.start();
-    log("Server started successfully");
+    console.error("Server started successfully");
     
     // Handle process exit signals
     setupExitHandlers(server);
   } catch (error) {
-    log("Failed to start server:", error);
+    console.error("Failed to start server:", error);
     process.exit(1);
   }
 }
@@ -34,7 +33,7 @@ async function main() {
  */
 function setupExitHandlers(server: any) {
   const exitHandler = async () => {
-    log("Shutting down server...");
+    console.error("Shutting down server...");
     await server.stop();
     process.exit(0);
   };
@@ -48,6 +47,6 @@ function setupExitHandlers(server: any) {
 
 // Start program
 main().catch((error) => {
-  log("Fatal error:", error);
+  console.error("Fatal error:", error);
   process.exit(1);
 });
